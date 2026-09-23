@@ -1,0 +1,78 @@
+/* Suma de los primeros N naturales.
+   N está en la palabra `n` (por defecto 10). El resultado, 55, se imprime
+   en la consola UART (0xFFFFFF00) y el programa se detiene con `trap 1`.
+
+   Ensamblar:
+     rtm32.asm test.rtm -o test.bin
+*/
+
+.section ".data"
+	n: .word 10
+
+.section ".text"
+	addi $sp, $zero, 0xFFC
+
+	lw $s1, n($zero)	// límite N
+	xor $t0, $t0, $t0	// i = 0
+	xor $s0, $s0, $s0	// acumulador = 0
+
+suma_bucle:
+	addi $t0, $t0, 1
+	add $s0, $s0, $t0
+	blt $t0, $s1, suma_bucle
+
+	addi $a0, $s0, 0
+	jal print32u
+
+	trap 1
+
+/* Imprime en la consola el entero sin signo de $a0, y después CRLF. */
+print32u:
+	addi $sp, $sp, -8
+	sw $s0, 0($sp)
+	sw $s1, 4($sp)
+
+	addi $s0, $a0, 0
+	xor $s1, $s1, $s1
+
+	addi $t0, $zero, 10
+	addi $t2, $zero, -0x100
+
+	bne $a0, $zero, print32u_apilar
+
+	addi $t1, $zero, '0'
+	sb $t1, 0($t2)
+	j print32u_salir
+
+print32u_apilar:
+	beq $s0, $zero, print32u_desapilar
+
+	addi $s1, $s1, 1
+	restu $t1, $s0, $t0
+	sub $s0, $s0, $t1
+	divu $s0, $s0, $t0
+
+	addi $t1, $t1, '0'
+	addi $sp, $sp, -1
+	sb $t1, 0($sp)
+	j print32u_apilar
+
+print32u_desapilar:
+	beq $s1, $zero, print32u_salir
+
+	lbu $t1, 0($sp)
+	sb $t1, 0($t2)
+	addi $s1, $s1, -1
+	addi $sp, $sp, 1
+	j print32u_desapilar
+
+print32u_salir:
+	addi $t1, $zero, '\r'
+	sb $t1, 0($t2)
+	addi $t1, $zero, '\n'
+	sb $t1, 0($t2)
+
+	lw $s0, 0($sp)
+	lw $s1, 4($sp)
+	addi $sp, $sp, 8
+	jr $ra, 0

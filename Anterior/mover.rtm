@@ -1,0 +1,91 @@
+/* Avión que se mueve y rebota en la consola UART de RTM32.
+   Consola en 0xFFFFFF00. '\r' vuelve al inicio de la línea.
+
+   Esta máquina (RTM32-0.5) no implementa ADDI ni LUI. Por eso se usan
+   ORI/ORH, ADD y SUB. Codificar con:
+
+     python3 codificar_stx4.py mover.rtm mover.bin
+
+   Ejecutar:
+
+     ./rtm32 -d telnet
+     telnet -4 localhost 4444
+     RTM32> load mover.bin
+     RTM32> c
+
+   La animación aparece en la ventana de picocom/xterm.
+   Para ir más rápido o más lento, cambiá los dos ORI de esperar_ext/esperar_int. */
+
+.section ".data"
+	titulo:     .asciiz "RTM32 - avion en movimiento"
+	avion_der:  .asciiz "-=O> "
+	avion_izq:  .asciiz "<O=- "
+
+.section ".text"
+	// $s0 = UART 0xFFFFFF00 (ORH carga la mitad alta; no hay LUI en este emulador)
+	orh $s0, $zero, 0xFFFF
+	ori $s0, $s0, 0xFF00
+
+	// $t9 = 1 (para sumar/restar de a uno)
+	ori $t9, $zero, 1
+
+	// $s1 = columna, $s2 = direccion (+1 / -1), $s3 = limite
+	xor $s1, $s1, $s1
+	ori $s2, $zero, 1
+	ori $s3, $zero, 24
+
+	ori $a0, $zero, .lo16 titulo
+imprimir_titulo:
+	lbu $t2, 0($a0)
+	beq $t2, $zero, titulo_fin
+	sb $t2, 0($s0)
+	add $a0, $a0, $t9
+	j imprimir_titulo
+titulo_fin:
+	ori $t0, $zero, '\r'
+	sb $t0, 0($s0)
+	ori $t0, $zero, '\n'
+	sb $t0, 0($s0)
+
+cuadro:
+	add $t0, $s1, $zero
+espacios:
+	beq $t0, $zero, espacios_fin
+	ori $t1, $zero, 32
+	sb $t1, 0($s0)
+	sub $t0, $t0, $t9
+	j espacios
+espacios_fin:
+	blt $s2, $zero, ir_izquierda
+	ori $a0, $zero, .lo16 avion_der
+	j dibujar
+ir_izquierda:
+	ori $a0, $zero, .lo16 avion_izq
+dibujar:
+	lbu $t2, 0($a0)
+	beq $t2, $zero, dibujar_fin
+	sb $t2, 0($s0)
+	add $a0, $a0, $t9
+	j dibujar
+dibujar_fin:
+	ori $t0, $zero, '\r'
+	sb $t0, 0($s0)
+
+	ori $t0, $zero, 200
+esperar_ext:
+	ori $t1, $zero, 200
+esperar_int:
+	sub $t1, $t1, $t9
+	bne $t1, $zero, esperar_int
+	sub $t0, $t0, $t9
+	bne $t0, $zero, esperar_ext
+
+	add $t0, $s1, $s2
+	blt $t0, $zero, rebotar
+	bge $t0, $s3, rebotar
+	add $s1, $t0, $zero
+	j cuadro
+rebotar:
+	sub $s2, $zero, $s2
+	add $s1, $s1, $s2
+	j cuadro
